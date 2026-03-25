@@ -41,6 +41,7 @@ body {
   padding: 12px;
 }
 
+/* バブル */
 .bubbleArea {
   position:relative;
   height:420px;
@@ -57,6 +58,7 @@ body {
   padding:6px;
   font-weight:bold;
   word-break:break-word;
+  touch-action:none;
 }
 
 /* リスト */
@@ -82,6 +84,7 @@ body {
 .rankB { border-left:6px solid #ff9500; }
 .rankC { border-left:6px solid #007aff; }
 
+/* ボタン */
 .fab {
   position:fixed;
   bottom:20px;
@@ -124,7 +127,7 @@ body {
 <div class="header">Todo</div>
 
 <div class="tabs">
-  <button onclick="setMode('bubble')" id="btnBubble" class="active">バブル</button>
+  <button onclick="setMode('bubble')" id="btnBubble" class="active">未完了</button>
   <button onclick="setMode('list')" id="btnList">リスト</button>
 </div>
 
@@ -155,9 +158,7 @@ let mode="bubble";
 let selectedRank="";
 let editing=null;
 
-function save(){
-  localStorage.setItem("tasks", JSON.stringify(tasks));
-}
+function save(){ localStorage.setItem("tasks", JSON.stringify(tasks)); }
 
 function setMode(m){
   mode=m;
@@ -168,7 +169,6 @@ function setMode(m){
 
 function openModal(t=null){
   modal.style.display="block";
-
   if(t){
     editing=t.id;
     text.value=t.text;
@@ -199,13 +199,6 @@ function saveTask(){
   save(); render();
 }
 
-function del(id){
-  if(confirm("削除する？")){
-    tasks = tasks.filter(t => t.id!==id);
-    save(); render();
-  }
-}
-
 function getScore(t){
   let s = t.rank==="A"?3:t.rank==="B"?2:1;
   if(t.deadline){
@@ -219,40 +212,31 @@ function getColor(r){
   return r==="A"?"#ff3b30":r==="B"?"#ff9500":"#007aff";
 }
 
-/* 衝突回避＋画面内制御 */
+/* バブル配置（上に重要） */
 function placeBubbles(items){
-  let placed=[];
-  let maxWidth=window.innerWidth-100;
+  let cols=3;
+  let gap=110;
 
-  items.forEach(t=>{
+  return items.map((t,i)=>{
     let size=Math.min(120,60+getScore(t)*20);
-    let x,y,tries=0;
-
-    do{
-      x=Math.random()*maxWidth;
-      y=Math.random()*320;
-      tries++;
-    }while(placed.some(p=>{
-      let dx=p.x-x;
-      let dy=p.y-y;
-      return Math.sqrt(dx*dx+dy*dy)<(p.size+size)/2;
-    }) && tries<100);
-
-    placed.push({x,y,size,task:t});
+    return {
+      x:(i%cols)*gap,
+      y:Math.floor(i/cols)*gap,
+      size,
+      task:t
+    };
   });
-
-  return placed;
 }
 
 function render(){
   bubbleArea.innerHTML="";
   list.innerHTML="";
 
-  let activeTasks=tasks.filter(t=>!t.done)
+  let active = tasks.filter(t=>!t.done)
     .sort((a,b)=>getScore(b)-getScore(a));
 
   if(mode==="bubble"){
-    let placed=placeBubbles(activeTasks);
+    let placed=placeBubbles(active);
 
     placed.forEach(p=>{
       let div=document.createElement("div");
@@ -265,7 +249,25 @@ function render(){
       div.style.background=getColor(p.task.rank);
 
       div.innerText=p.task.text;
-      div.onclick=()=>openModal(p.task);
+
+      // ドラッグで完了
+      let startX, startY;
+      div.addEventListener("touchstart",e=>{
+        startX=e.touches[0].clientX;
+        startY=e.touches[0].clientY;
+      });
+
+      div.addEventListener("touchend",e=>{
+        let dx=e.changedTouches[0].clientX-startX;
+        let dy=e.changedTouches[0].clientY-startY;
+
+        if(Math.abs(dx)>80 || Math.abs(dy)>80){
+          p.task.done=true;
+          save(); render();
+        }else{
+          openModal(p.task);
+        }
+      });
 
       bubbleArea.appendChild(div);
     });
@@ -275,28 +277,25 @@ function render(){
   }
 
   if(mode==="list"){
-    activeTasks.forEach(t=>{
+    tasks.forEach(t=>{
       let div=document.createElement("div");
       div.className="card rank"+t.rank;
 
       div.innerHTML=`
         <div>${t.text}</div>
-        <div>
-          ${t.deadline?`<div class="badge">${t.deadline}</div>`:""}
-        </div>
+        <div>${t.deadline||""}</div>
       `;
 
-      // タップで編集
-      div.onclick=()=>openModal(t);
-
-      // スワイプ削除
+      // スワイプ
       let start=0;
       div.addEventListener("touchstart",e=>start=e.touches[0].clientX);
       div.addEventListener("touchend",e=>{
-        if(e.changedTouches[0].clientX-start>80){
-          del(t.id);
-        }
+        let diff=e.changedTouches[0].clientX-start;
+        if(diff>80){ t.done=true; save(); render(); }
+        if(diff<-80){ tasks=tasks.filter(x=>x.id!==t.id); save(); render(); }
       });
+
+      div.onclick=()=>openModal(t);
 
       list.appendChild(div);
     });
