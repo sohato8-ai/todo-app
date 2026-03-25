@@ -9,13 +9,30 @@
 body {
   margin: 0;
   font-family: -apple-system;
-  background: #f2f2f7;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #333;
 }
 
 .header {
-  padding: 16px;
-  font-size: 20px;
+  padding: 20px;
+  font-size: 22px;
   font-weight: bold;
+  color: white;
+}
+
+.tabs {
+  display: flex;
+  justify-content: space-around;
+  margin: 10px;
+}
+
+.tabs button {
+  flex:1;
+  margin:4px;
+  padding:10px;
+  border:none;
+  border-radius:10px;
+  background:white;
 }
 
 .container {
@@ -29,11 +46,26 @@ body {
   margin-bottom: 10px;
   display: flex;
   justify-content: space-between;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  align-items:center;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 
-  /* 👇 縦書き防止 */
   white-space: normal;
   word-break: break-word;
+}
+
+.today {
+  border:2px solid #ff3b30;
+}
+
+.rankA { border-left: 6px solid #ff3b30; }
+.rankB { border-left: 6px solid #ff9500; }
+.rankC { border-left: 6px solid #007aff; }
+
+.badge {
+  font-size: 12px;
+  background:#eee;
+  padding:4px 8px;
+  border-radius:8px;
 }
 
 .done {
@@ -41,13 +73,9 @@ body {
   opacity: 0.4;
 }
 
-.rankA { border-left: 6px solid #ff3b30; }
-.rankB { border-left: 6px solid #ff9500; }
-.rankC { border-left: 6px solid #007aff; }
-
 .fab {
   position: fixed;
-  bottom: 70px;
+  bottom: 80px;
   right: 20px;
   width: 60px;
   height: 60px;
@@ -57,17 +85,6 @@ body {
   font-size: 28px;
   text-align: center;
   line-height: 60px;
-}
-
-.bottomNav {
-  position: fixed;
-  bottom: 0;
-  width: 100%;
-  background: white;
-  display: flex;
-  justify-content: space-around;
-  padding: 10px 0;
-  border-top: 1px solid #ddd;
 }
 
 .modal {
@@ -103,11 +120,9 @@ input, select {
   justify-content:center;
   text-align:center;
 
-  /* 👇 見やすさ改善 */
   font-weight: bold;
-  padding: 6px;
+  padding:6px;
 
-  /* 👇 縦書き防止 */
   white-space: normal;
   word-break: break-word;
 }
@@ -118,17 +133,17 @@ input, select {
 
 <div class="header">Todo</div>
 
-<div class="container" id="listView"></div>
-<div id="bubbleView" class="bubbleView"></div>
-
-<div class="fab" onclick="openModal()">＋</div>
-
-<div class="bottomNav">
+<div class="tabs">
   <button onclick="setView('list')">リスト</button>
   <button onclick="setView('bubble')">バブル</button>
   <button onclick="filter('active')">未完了</button>
   <button onclick="filter('done')">完了</button>
 </div>
+
+<div class="container" id="listView"></div>
+<div id="bubbleView" class="bubbleView"></div>
+
+<div class="fab" onclick="openModal()">＋</div>
 
 <div id="modal" class="modal">
   <input id="text" placeholder="タスク">
@@ -139,43 +154,47 @@ input, select {
     <option value="C">C</option>
   </select>
   <input type="date" id="deadline">
-  <button onclick="addTask()">追加</button>
+  <button onclick="addTask()">保存</button>
 </div>
 
 <script>
 let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
-let currentFilter = "all";
+let currentFilter="all";
+let dragSrc=null;
 
-function save(){
-  localStorage.setItem("tasks", JSON.stringify(tasks));
+function save(){localStorage.setItem("tasks",JSON.stringify(tasks));}
+
+function isToday(d){
+  return d && new Date(d).toDateString()===new Date().toDateString();
 }
 
-function getScore(t){
-  let s=0;
-  if(t.rank==="A")s+=3;
-  if(t.rank==="B")s+=2;
-  if(t.rank==="C")s+=1;
-  if(t.deadline){
-    let d=(new Date(t.deadline)-new Date())/(1000*60*60*24);
-    s+=Math.max(0,5-d);
-  }
-  return s;
-}
-
-function openModal(){
+function openModal(t=null){
   document.getElementById("modal").style.display="block";
+  if(t){
+    document.getElementById("text").value=t.text;
+    document.getElementById("rank").value=t.rank;
+    document.getElementById("deadline").value=t.deadline;
+    editing=t.id;
+  }
 }
+
+let editing=null;
 
 function addTask(){
   let t=document.getElementById("text").value;
   let r=document.getElementById("rank").value;
   let d=document.getElementById("deadline").value;
+
   if(!t)return;
 
-  tasks.push({id:Date.now(),text:t,rank:r,deadline:d,done:false});
-  save();
-  render();
+  if(editing){
+    tasks=tasks.map(x=>x.id===editing?{...x,text:t,rank:r,deadline:d}:x);
+    editing=null;
+  }else{
+    tasks.push({id:Date.now(),text:t,rank:r,deadline:d,done:false});
+  }
 
+  save();render();
   document.getElementById("modal").style.display="none";
 }
 
@@ -189,10 +208,7 @@ function del(id){
   save();render();
 }
 
-function filter(f){
-  currentFilter=f;
-  render();
-}
+function filter(f){currentFilter=f;render();}
 
 function render(){
   renderList();
@@ -204,21 +220,40 @@ function renderList(){
   el.innerHTML="";
 
   let list=tasks.filter(t=>{
-    if(currentFilter==="active") return !t.done;
-    if(currentFilter==="done") return t.done;
+    if(currentFilter==="active")return !t.done;
+    if(currentFilter==="done")return t.done;
     return true;
   });
 
-  list.forEach(t=>{
+  list.forEach((t,i)=>{
     let div=document.createElement("div");
-    div.className=`card rank${t.rank}`;
+    div.className=`card rank${t.rank} ${isToday(t.deadline)?"today":""}`;
+    div.draggable=true;
 
     div.innerHTML=`
       <div class="${t.done?"done":""}">
-        ${t.text}<br>${t.deadline||""}
+        ${t.text}
       </div>
-      <input type="checkbox" ${t.done?"checked":""} onclick="toggle(${t.id})">
+      <div>
+        ${t.deadline?`<div class="badge">${t.deadline}</div>`:""}
+        <input type="checkbox" ${t.done?"checked":""} onclick="toggle(${t.id})">
+      </div>
     `;
+
+    // ドラッグ並び替え
+    div.ondragstart=()=>dragSrc=i;
+    div.ondragover=e=>e.preventDefault();
+    div.ondrop=()=>{
+      let temp=tasks[dragSrc];
+      tasks.splice(dragSrc,1);
+      tasks.splice(i,0,temp);
+      save();render();
+    };
+
+    // 長押し編集
+    let timer;
+    div.ontouchstart=()=>timer=setTimeout(()=>openModal(t),500);
+    div.ontouchend=()=>clearTimeout(timer);
 
     // スワイプ削除
     let start=0;
@@ -235,32 +270,30 @@ function renderBubble(){
   let el=document.getElementById("bubbleView");
   el.innerHTML="";
 
-  let sorted=[...tasks].sort((a,b)=>getScore(b)-getScore(a));
-
-  sorted.forEach((t,i)=>{
-    let size=60+getScore(t)*20;
+  tasks.forEach((t,i)=>{
+    let size=60+(t.rank==="A"?60:t.rank==="B"?40:20);
 
     let div=document.createElement("div");
     div.className="bubble";
-
     div.style.width=size+"px";
     div.style.height=size+"px";
-    div.style.top=(Math.floor(i/3)*120+20)+"px";
-    div.style.left=((i%3)*120+20)+"px";
+    div.style.top=(Math.random()*400)+"px";
+    div.style.left=(Math.random()*300)+"px";
     div.style.background=t.rank==="A"?"#ff3b30":t.rank==="B"?"#ff9500":"#007aff";
-
-    /* 👇 サイズに応じて文字サイズ調整 */
-    div.style.fontSize = Math.min(size/5, 18) + "px";
+    div.style.fontSize=Math.min(size/5,18)+"px";
 
     div.innerText=t.text;
+
+    // タップで編集
+    div.onclick=()=>openModal(t);
 
     el.appendChild(div);
   });
 }
 
 function setView(v){
-  document.getElementById("listView").style.display = v==="list" ? "block" : "none";
-  document.getElementById("bubbleView").style.display = v==="bubble" ? "block" : "none";
+  document.getElementById("listView").style.display=v==="list"?"block":"none";
+  document.getElementById("bubbleView").style.display=v==="bubble"?"block":"none";
 }
 
 render();
