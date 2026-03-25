@@ -41,30 +41,6 @@ body {
   padding: 12px;
 }
 
-.card {
-  background:white;
-  border-radius:16px;
-  padding:14px;
-  margin-bottom:10px;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-
-  white-space: normal;
-  word-break: break-word;
-}
-
-.rankA { border-left:6px solid #ff3b30; }
-.rankB { border-left:6px solid #ff9500; }
-.rankC { border-left:6px solid #007aff; }
-
-.badge {
-  font-size:12px;
-  background:#eee;
-  padding:4px 8px;
-  border-radius:8px;
-}
-
 .bubbleArea {
   position:relative;
   height:420px;
@@ -80,7 +56,22 @@ body {
   text-align:center;
   padding:6px;
   font-weight:bold;
-  word-break:break-word;
+}
+
+.card {
+  background:white;
+  border-radius:16px;
+  padding:14px;
+  margin-bottom:10px;
+  display:flex;
+  justify-content:space-between;
+}
+
+.badge {
+  font-size:12px;
+  background:#eee;
+  padding:4px 8px;
+  border-radius:8px;
 }
 
 .fab {
@@ -95,6 +86,27 @@ body {
   font-size:28px;
   text-align:center;
   line-height:60px;
+}
+
+/* モーダル */
+.modal {
+  position:fixed;
+  bottom:0;
+  width:100%;
+  background:white;
+  padding:16px;
+  border-radius:16px 16px 0 0;
+  display:none;
+}
+
+.rankSelect span {
+  font-size:24px;
+  margin:10px;
+  cursor:pointer;
+}
+
+.selected {
+  transform: scale(1.3);
 }
 </style>
 </head>
@@ -113,102 +125,111 @@ body {
   <div id="list"></div>
 </div>
 
-<div class="fab" onclick="addTask()">＋</div>
+<div class="fab" onclick="openModal()">＋</div>
+
+<div id="modal" class="modal">
+  <input id="text" placeholder="タスク名">
+
+  <div class="rankSelect">
+    <span onclick="setRank('A')" id="rA">🔴</span>
+    <span onclick="setRank('B')" id="rB">🟡</span>
+    <span onclick="setRank('C')" id="rC">🔵</span>
+  </div>
+
+  <input type="date" id="date">
+
+  <button onclick="saveTask()">保存</button>
+</div>
 
 <script>
 let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
-let mode = "active";
+let mode="active";
+let editing=null;
+let selectedRank="";
 
 function save(){
   localStorage.setItem("tasks", JSON.stringify(tasks));
 }
 
 function setMode(m){
-  mode = m;
-  document.getElementById("btnActive").classList.toggle("active", m==="active");
-  document.getElementById("btnDone").classList.toggle("active", m==="done");
+  mode=m;
+  btnActive.classList.toggle("active",m==="active");
+  btnDone.classList.toggle("active",m==="done");
   render();
 }
 
-function addTask(){
-  let text = prompt("タスク名");
-  if(!text) return;
-  let rank = prompt("ランク A/B/C") || "";
-  let deadline = prompt("期限 YYYY-MM-DD") || "";
-
-  tasks.push({id:Date.now(), text, rank, deadline, done:false});
-  save(); render();
+function openModal(t=null){
+  modal.style.display="block";
+  if(t){
+    editing=t.id;
+    text.value=t.text;
+    date.value=t.deadline;
+    selectedRank=t.rank;
+  }
 }
 
-function toggle(id){
-  tasks = tasks.map(t => t.id===id ? {...t, done:!t.done} : t);
-  save(); render();
-}
-
-function del(id){
-  tasks = tasks.filter(t => t.id!==id);
-  save(); render();
-}
-
-function edit(t){
-  let text = prompt("タスク名", t.text);
-  let rank = prompt("ランク", t.rank);
-  let deadline = prompt("期限", t.deadline);
-
-  tasks = tasks.map(x => x.id===t.id ? {...x, text, rank, deadline} : x);
-  save(); render();
-}
-
-function getColor(r){
-  if(r==="A") return "#ff3b30";
-  if(r==="B") return "#ff9500";
-  if(r==="C") return "#007aff";
-  return "#999";
-}
-
-// 🔥 衝突回避（グリッド＋中央寄せ）
-function placeBubbles(items){
-  let cols = Math.ceil(Math.sqrt(items.length));
-  let gap = 100;
-
-  return items.map((t,i)=>{
-    let row = Math.floor(i / cols);
-    let col = i % cols;
-
-    let size = 60 + (t.rank==="A"?60:t.rank==="B"?40:20);
-
-    return {
-      x: col * gap + 20,
-      y: row * gap + 20,
-      size,
-      task:t
-    };
+function setRank(r){
+  selectedRank=r;
+  ["A","B","C"].forEach(x=>{
+    document.getElementById("r"+x).classList.toggle("selected",x===r);
   });
 }
 
-function render(){
-  let bubbleArea = document.getElementById("bubbleArea");
-  let list = document.getElementById("list");
+function saveTask(){
+  let t=text.value;
+  let d=date.value;
 
+  if(editing){
+    tasks=tasks.map(x=>x.id===editing?{...x,text:t,rank:selectedRank,deadline:d}:x);
+    editing=null;
+  }else{
+    tasks.push({id:Date.now(),text:t,rank:selectedRank,deadline:d,done:false});
+  }
+
+  modal.style.display="none";
+  save(); render();
+}
+
+function getScore(t){
+  let s=0;
+  if(t.rank==="A")s+=3;
+  if(t.rank==="B")s+=2;
+  if(t.rank==="C")s+=1;
+
+  if(t.deadline){
+    let d=(new Date(t.deadline)-new Date())/(1000*60*60*24);
+    s+=Math.max(0,5-d);
+  }
+  return s;
+}
+
+function getColor(r){
+  return r==="A"?"#ff3b30":r==="B"?"#ff9500":"#007aff";
+}
+
+function render(){
   bubbleArea.innerHTML="";
   list.innerHTML="";
 
   if(mode==="active"){
-    let items = tasks.filter(t=>!t.done);
-    let placed = placeBubbles(items);
+    let sorted=[...tasks.filter(t=>!t.done)]
+      .sort((a,b)=>getScore(b)-getScore(a));
 
-    placed.forEach(p=>{
+    sorted.forEach((t,i)=>{
+      let size=60+getScore(t)*20;
+
       let div=document.createElement("div");
       div.className="bubble";
-      div.style.width=p.size+"px";
-      div.style.height=p.size+"px";
-      div.style.left=p.x+"px";
-      div.style.top=p.y+"px";
-      div.style.background=getColor(p.task.rank);
-      div.style.fontSize=Math.min(p.size/5,18)+"px";
 
-      div.innerText=p.task.text;
-      div.onclick=()=>edit(p.task);
+      div.style.width=size+"px";
+      div.style.height=size+"px";
+      div.style.left=(i%3)*110+"px";
+      div.style.top=Math.floor(i/3)*110+"px";
+      div.style.background=getColor(t.rank);
+      div.style.fontSize=Math.min(size/5,18)+"px";
+
+      div.innerText=t.text;
+      div.onclick=()=>openModal(t);
 
       bubbleArea.appendChild(div);
     });
@@ -220,18 +241,14 @@ function render(){
   if(mode==="done"){
     tasks.filter(t=>t.done).forEach(t=>{
       let div=document.createElement("div");
-      div.className="card rank"+t.rank;
+      div.className="card";
 
       div.innerHTML=`
         <div>${t.text}</div>
         <div>
           ${t.deadline?`<div class="badge">${t.deadline}</div>`:""}
-          <button onclick="toggle(${t.id})">戻す</button>
-          <button onclick="del(${t.id})">削除</button>
         </div>
       `;
-
-      div.onclick=()=>edit(t);
 
       list.appendChild(div);
     });
