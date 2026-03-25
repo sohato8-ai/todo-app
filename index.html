@@ -1,8 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#000000">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Todo</title>
@@ -10,8 +8,8 @@
 <style>
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont;
-  background: #f5f5f7;
+  font-family: -apple-system;
+  background: #f2f2f7;
 }
 
 .header {
@@ -20,66 +18,76 @@ body {
   font-weight: bold;
 }
 
+.tabs {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 8px;
+}
+
 .container {
   padding: 12px;
 }
 
 .card {
   background: white;
-  border-radius: 12px;
-  padding: 12px;
+  border-radius: 16px;
+  padding: 14px;
   margin-bottom: 10px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  transition: transform 0.2s;
-}
-
-.card:active {
-  transform: scale(0.98);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
 
 .done {
   text-decoration: line-through;
-  opacity: 0.5;
+  opacity: 0.4;
 }
 
 .rankA { border-left: 6px solid #ff3b30; }
-.rankB { border-left: 6px solid #ffcc00; }
+.rankB { border-left: 6px solid #ff9500; }
 .rankC { border-left: 6px solid #007aff; }
 
 .fab {
   position: fixed;
-  bottom: 20px;
+  bottom: 70px;
   right: 20px;
   width: 60px;
   height: 60px;
   background: black;
   color: white;
   border-radius: 50%;
-  font-size: 30px;
+  font-size: 28px;
   text-align: center;
   line-height: 60px;
 }
 
-input, select {
+.bottomNav {
+  position: fixed;
+  bottom: 0;
   width: 100%;
-  padding: 10px;
-  margin-bottom: 8px;
-  border-radius: 8px;
-  border: 1px solid #ddd;
+  background: white;
+  display: flex;
+  justify-content: space-around;
+  padding: 10px 0;
+  border-top: 1px solid #ddd;
 }
 
 .modal {
   position: fixed;
   bottom: 0;
-  left: 0;
-  right: 0;
+  width: 100%;
   background: white;
   padding: 16px;
   border-radius: 16px 16px 0 0;
   display: none;
+}
+
+input, select {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
 }
 
 .bubbleView {
@@ -95,13 +103,8 @@ input, select {
   display:flex;
   align-items:center;
   justify-content:center;
+  text-align:center;
   font-size:10px;
-}
-
-.tabs {
-  display:flex;
-  justify-content:space-around;
-  margin-bottom:10px;
 }
 </style>
 </head>
@@ -110,15 +113,17 @@ input, select {
 
 <div class="header">Todo</div>
 
-<div class="tabs">
-  <button onclick="setView('list')">リスト</button>
-  <button onclick="setView('bubble')">バブル</button>
-</div>
-
-<div id="listView" class="container"></div>
+<div class="container" id="listView"></div>
 <div id="bubbleView" class="bubbleView"></div>
 
 <div class="fab" onclick="openModal()">＋</div>
+
+<div class="bottomNav">
+  <button onclick="setView('list')">リスト</button>
+  <button onclick="setView('bubble')">バブル</button>
+  <button onclick="filter('active')">未完了</button>
+  <button onclick="filter('done')">完了</button>
+</div>
 
 <div id="modal" class="modal">
   <input id="text" placeholder="タスク">
@@ -134,11 +139,9 @@ input, select {
 
 <script>
 let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
-let view = "list";
+let currentFilter = "all";
 
-function save(){
-  localStorage.setItem("tasks", JSON.stringify(tasks));
-}
+function save(){localStorage.setItem("tasks",JSON.stringify(tasks));}
 
 function getScore(t){
   let s=0;
@@ -152,26 +155,15 @@ function getScore(t){
   return s;
 }
 
-function getColor(r){
-  if(r==="A")return "#ff3b30";
-  if(r==="B")return "#ffcc00";
-  if(r==="C")return "#007aff";
-  return "#999";
-}
-
-function openModal(){
-  document.getElementById("modal").style.display="block";
-}
+function openModal(){document.getElementById("modal").style.display="block";}
 
 function addTask(){
-  let text=document.getElementById("text").value;
-  let rank=document.getElementById("rank").value;
-  let deadline=document.getElementById("deadline").value;
-  if(!text)return;
-
-  tasks.push({id:Date.now(),text,rank,deadline,done:false});
-  save();
-  render();
+  let t=document.getElementById("text").value;
+  let r=document.getElementById("rank").value;
+  let d=document.getElementById("deadline").value;
+  if(!t)return;
+  tasks.push({id:Date.now(),text:t,rank:r,deadline:d,done:false});
+  save();render();
   document.getElementById("modal").style.display="none";
 }
 
@@ -185,6 +177,11 @@ function del(id){
   save();render();
 }
 
+function filter(f){
+  currentFilter=f;
+  render();
+}
+
 function render(){
   renderList();
   renderBubble();
@@ -194,26 +191,28 @@ function renderList(){
   let el=document.getElementById("listView");
   el.innerHTML="";
 
-  tasks.forEach(t=>{
+  let list=tasks.filter(t=>{
+    if(currentFilter==="active") return !t.done;
+    if(currentFilter==="done") return t.done;
+    return true;
+  });
+
+  list.forEach(t=>{
     let div=document.createElement("div");
     div.className=`card rank${t.rank}`;
 
     div.innerHTML=`
       <div class="${t.done?"done":""}">
-        ${t.text}<br>
-        ${t.deadline||""}
+        ${t.text}<br>${t.deadline||""}
       </div>
-      <div>
-        <input type="checkbox" ${t.done?"checked":""} onclick="toggle(${t.id})">
-      </div>
+      <input type="checkbox" ${t.done?"checked":""} onclick="toggle(${t.id})">
     `;
 
     // スワイプ削除
-    let startX=0;
-    div.addEventListener("touchstart",e=>startX=e.touches[0].clientX);
+    let start=0;
+    div.addEventListener("touchstart",e=>start=e.touches[0].clientX);
     div.addEventListener("touchend",e=>{
-      let diff=e.changedTouches[0].clientX-startX;
-      if(diff>80) del(t.id);
+      if(e.changedTouches[0].clientX-start>80) del(t.id);
     });
 
     el.appendChild(div);
@@ -233,17 +232,15 @@ function renderBubble(){
     div.style.height=size+"px";
     div.style.top=(Math.floor(i/3)*120+20)+"px";
     div.style.left=((i%3)*120+20)+"px";
-    div.style.background=getColor(t.rank);
-    div.style.opacity=t.done?0.3:1;
+    div.style.background=t.rank==="A"?"#ff3b30":t.rank==="B"?"#ff9500":"#007aff";
     div.innerText=t.text;
     el.appendChild(div);
   });
 }
 
 function setView(v){
-  view = v;
-  document.getElementById("listView").style.display = v === "list" ? "block" : "none";
-  document.getElementById("bubbleView").style.display = v === "bubble" ? "block" : "none";
+  document.getElementById("listView").style.display=v==="list"?"block":"none";
+  document.getElementById("bubbleView").style.display=v==="bubble"?"block":"none";
 }
 
 render();
