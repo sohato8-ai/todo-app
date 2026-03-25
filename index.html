@@ -41,7 +41,6 @@ body {
   padding: 12px;
 }
 
-/* バブル */
 .bubbleArea {
   position:relative;
   height:420px;
@@ -69,6 +68,7 @@ body {
   display:flex;
   justify-content:space-between;
   align-items:center;
+  transition: transform 0.2s;
 }
 
 .badge {
@@ -82,7 +82,6 @@ body {
 .rankB { border-left:6px solid #ff9500; }
 .rankC { border-left:6px solid #007aff; }
 
-/* ボタン */
 .fab {
   position:fixed;
   bottom:20px;
@@ -108,14 +107,14 @@ body {
   display:none;
 }
 
-.rankSelect span {
-  font-size:24px;
-  margin:10px;
-  cursor:pointer;
+.rankSelect div {
+  margin:8px;
+  padding:8px;
+  border-radius:8px;
+  border:1px solid #ccc;
 }
-
 .selected {
-  transform: scale(1.3);
+  background:#ddd;
 }
 </style>
 </head>
@@ -140,9 +139,9 @@ body {
   <input id="text" placeholder="タスク名">
 
   <div class="rankSelect">
-    <span onclick="setRank('A')" id="rA">🔴</span>
-    <span onclick="setRank('B')" id="rB">🟡</span>
-    <span onclick="setRank('C')" id="rC">🔵</span>
+    <div onclick="setRank('A')" id="rA">🔴 高（A）</div>
+    <div onclick="setRank('B')" id="rB">🟡 中（B）</div>
+    <div onclick="setRank('C')" id="rC">🔵 低（C）</div>
   </div>
 
   <input type="date" id="date">
@@ -169,11 +168,12 @@ function setMode(m){
 
 function openModal(t=null){
   modal.style.display="block";
+
   if(t){
     editing=t.id;
     text.value=t.text;
     date.value=t.deadline;
-    selectedRank=t.rank;
+    setRank(t.rank);
   }
 }
 
@@ -199,11 +199,6 @@ function saveTask(){
   save(); render();
 }
 
-function toggle(id){
-  tasks = tasks.map(t => t.id===id ? {...t, done:!t.done} : t);
-  save(); render();
-}
-
 function del(id){
   if(confirm("削除する？")){
     tasks = tasks.filter(t => t.id!==id);
@@ -224,17 +219,18 @@ function getColor(r){
   return r==="A"?"#ff3b30":r==="B"?"#ff9500":"#007aff";
 }
 
-/* 🔥 衝突回避 */
+/* 衝突回避＋画面内制御 */
 function placeBubbles(items){
   let placed=[];
+  let maxWidth=window.innerWidth-100;
 
   items.forEach(t=>{
-    let size=60+getScore(t)*20;
+    let size=Math.min(120,60+getScore(t)*20);
     let x,y,tries=0;
 
     do{
-      x=Math.random()*300;
-      y=Math.random()*350;
+      x=Math.random()*maxWidth;
+      y=Math.random()*320;
       tries++;
     }while(placed.some(p=>{
       let dx=p.x-x;
@@ -252,24 +248,21 @@ function render(){
   bubbleArea.innerHTML="";
   list.innerHTML="";
 
-  let activeTasks = tasks.filter(t=>!t.done);
-  let sorted = [...activeTasks].sort((a,b)=>{
-    if(getScore(b)!==getScore(a)) return getScore(b)-getScore(a);
-    return new Date(a.deadline||"9999") - new Date(b.deadline||"9999");
-  });
+  let activeTasks=tasks.filter(t=>!t.done)
+    .sort((a,b)=>getScore(b)-getScore(a));
 
   if(mode==="bubble"){
-    let placed = placeBubbles(sorted);
+    let placed=placeBubbles(activeTasks);
 
     placed.forEach(p=>{
       let div=document.createElement("div");
       div.className="bubble";
+
       div.style.width=p.size+"px";
       div.style.height=p.size+"px";
       div.style.left=p.x+"px";
       div.style.top=p.y+"px";
       div.style.background=getColor(p.task.rank);
-      div.style.fontSize=Math.min(p.size/5,18)+"px";
 
       div.innerText=p.task.text;
       div.onclick=()=>openModal(p.task);
@@ -282,7 +275,7 @@ function render(){
   }
 
   if(mode==="list"){
-    sorted.forEach(t=>{
+    activeTasks.forEach(t=>{
       let div=document.createElement("div");
       div.className="card rank"+t.rank;
 
@@ -290,24 +283,20 @@ function render(){
         <div>${t.text}</div>
         <div>
           ${t.deadline?`<div class="badge">${t.deadline}</div>`:""}
-          <button onclick="toggle(${t.id})">完了</button>
         </div>
       `;
 
-      list.appendChild(div);
-    });
+      // タップで編集
+      div.onclick=()=>openModal(t);
 
-    tasks.filter(t=>t.done).forEach(t=>{
-      let div=document.createElement("div");
-      div.className="card";
-
-      div.innerHTML=`
-        <div style="opacity:0.5">${t.text}</div>
-        <div>
-          <button onclick="toggle(${t.id})">戻す</button>
-          <button onclick="del(${t.id})">削除</button>
-        </div>
-      `;
+      // スワイプ削除
+      let start=0;
+      div.addEventListener("touchstart",e=>start=e.touches[0].clientX);
+      div.addEventListener("touchend",e=>{
+        if(e.changedTouches[0].clientX-start>80){
+          del(t.id);
+        }
+      });
 
       list.appendChild(div);
     });
