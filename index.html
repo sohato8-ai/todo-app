@@ -33,7 +33,7 @@ body {
 }
 
 .active {
-  background:#000;
+  background:black;
   color:white;
 }
 
@@ -41,6 +41,7 @@ body {
   padding: 12px;
 }
 
+/* バブル */
 .bubbleArea {
   position:relative;
   height:420px;
@@ -56,8 +57,10 @@ body {
   text-align:center;
   padding:6px;
   font-weight:bold;
+  word-break:break-word;
 }
 
+/* リスト */
 .card {
   background:white;
   border-radius:16px;
@@ -65,6 +68,7 @@ body {
   margin-bottom:10px;
   display:flex;
   justify-content:space-between;
+  align-items:center;
 }
 
 .badge {
@@ -74,6 +78,11 @@ body {
   border-radius:8px;
 }
 
+.rankA { border-left:6px solid #ff3b30; }
+.rankB { border-left:6px solid #ff9500; }
+.rankC { border-left:6px solid #007aff; }
+
+/* ボタン */
 .fab {
   position:fixed;
   bottom:20px;
@@ -116,8 +125,8 @@ body {
 <div class="header">Todo</div>
 
 <div class="tabs">
-  <button id="btnActive" onclick="setMode('active')" class="active">未完了</button>
-  <button id="btnDone" onclick="setMode('done')">完了</button>
+  <button onclick="setMode('bubble')" id="btnBubble" class="active">バブル</button>
+  <button onclick="setMode('list')" id="btnList">リスト</button>
 </div>
 
 <div class="container">
@@ -143,9 +152,9 @@ body {
 
 <script>
 let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
-let mode="active";
-let editing=null;
+let mode="bubble";
 let selectedRank="";
+let editing=null;
 
 function save(){
   localStorage.setItem("tasks", JSON.stringify(tasks));
@@ -153,8 +162,8 @@ function save(){
 
 function setMode(m){
   mode=m;
-  btnActive.classList.toggle("active",m==="active");
-  btnDone.classList.toggle("active",m==="done");
+  btnBubble.classList.toggle("active",m==="bubble");
+  btnList.classList.toggle("active",m==="list");
   render();
 }
 
@@ -190,15 +199,23 @@ function saveTask(){
   save(); render();
 }
 
-function getScore(t){
-  let s=0;
-  if(t.rank==="A")s+=3;
-  if(t.rank==="B")s+=2;
-  if(t.rank==="C")s+=1;
+function toggle(id){
+  tasks = tasks.map(t => t.id===id ? {...t, done:!t.done} : t);
+  save(); render();
+}
 
+function del(id){
+  if(confirm("削除する？")){
+    tasks = tasks.filter(t => t.id!==id);
+    save(); render();
+  }
+}
+
+function getScore(t){
+  let s = t.rank==="A"?3:t.rank==="B"?2:1;
   if(t.deadline){
     let d=(new Date(t.deadline)-new Date())/(1000*60*60*24);
-    s+=Math.max(0,5-d);
+    s += Math.max(0,5-d);
   }
   return s;
 }
@@ -207,29 +224,55 @@ function getColor(r){
   return r==="A"?"#ff3b30":r==="B"?"#ff9500":"#007aff";
 }
 
+/* 🔥 衝突回避 */
+function placeBubbles(items){
+  let placed=[];
+
+  items.forEach(t=>{
+    let size=60+getScore(t)*20;
+    let x,y,tries=0;
+
+    do{
+      x=Math.random()*300;
+      y=Math.random()*350;
+      tries++;
+    }while(placed.some(p=>{
+      let dx=p.x-x;
+      let dy=p.y-y;
+      return Math.sqrt(dx*dx+dy*dy)<(p.size+size)/2;
+    }) && tries<100);
+
+    placed.push({x,y,size,task:t});
+  });
+
+  return placed;
+}
+
 function render(){
   bubbleArea.innerHTML="";
   list.innerHTML="";
 
-  if(mode==="active"){
-    let sorted=[...tasks.filter(t=>!t.done)]
-      .sort((a,b)=>getScore(b)-getScore(a));
+  let activeTasks = tasks.filter(t=>!t.done);
+  let sorted = [...activeTasks].sort((a,b)=>{
+    if(getScore(b)!==getScore(a)) return getScore(b)-getScore(a);
+    return new Date(a.deadline||"9999") - new Date(b.deadline||"9999");
+  });
 
-    sorted.forEach((t,i)=>{
-      let size=60+getScore(t)*20;
+  if(mode==="bubble"){
+    let placed = placeBubbles(sorted);
 
+    placed.forEach(p=>{
       let div=document.createElement("div");
       div.className="bubble";
+      div.style.width=p.size+"px";
+      div.style.height=p.size+"px";
+      div.style.left=p.x+"px";
+      div.style.top=p.y+"px";
+      div.style.background=getColor(p.task.rank);
+      div.style.fontSize=Math.min(p.size/5,18)+"px";
 
-      div.style.width=size+"px";
-      div.style.height=size+"px";
-      div.style.left=(i%3)*110+"px";
-      div.style.top=Math.floor(i/3)*110+"px";
-      div.style.background=getColor(t.rank);
-      div.style.fontSize=Math.min(size/5,18)+"px";
-
-      div.innerText=t.text;
-      div.onclick=()=>openModal(t);
+      div.innerText=p.task.text;
+      div.onclick=()=>openModal(p.task);
 
       bubbleArea.appendChild(div);
     });
@@ -238,15 +281,31 @@ function render(){
     list.style.display="none";
   }
 
-  if(mode==="done"){
-    tasks.filter(t=>t.done).forEach(t=>{
+  if(mode==="list"){
+    sorted.forEach(t=>{
       let div=document.createElement("div");
-      div.className="card";
+      div.className="card rank"+t.rank;
 
       div.innerHTML=`
         <div>${t.text}</div>
         <div>
           ${t.deadline?`<div class="badge">${t.deadline}</div>`:""}
+          <button onclick="toggle(${t.id})">完了</button>
+        </div>
+      `;
+
+      list.appendChild(div);
+    });
+
+    tasks.filter(t=>t.done).forEach(t=>{
+      let div=document.createElement("div");
+      div.className="card";
+
+      div.innerHTML=`
+        <div style="opacity:0.5">${t.text}</div>
+        <div>
+          <button onclick="toggle(${t.id})">戻す</button>
+          <button onclick="del(${t.id})">削除</button>
         </div>
       `;
 
